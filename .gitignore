@@ -1,0 +1,6 @@
+*.pyc
+pycache/
+__pycache__/
+tensorboard/
+*.log
+wandb/

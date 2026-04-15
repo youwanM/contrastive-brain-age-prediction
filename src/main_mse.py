@@ -13,7 +13,7 @@ import wandb
 import torch.utils.tensorboard
 
 from torchvision import transforms
-from util import AverageMeter, MAE, ensure_dir, set_seed, arg2bool, save_model
+from util import AverageMeter, MAE, ensure_dir, set_seed, arg2bool, save_model, get_run_name
 from util import warmup_learning_rate, adjust_learning_rate
 from util import compute_age_mae, compute_site_ba
 from data import FeatureExtractor, OpenBHB, bin_age
@@ -47,6 +47,8 @@ def parse_arguments():
     parser.add_argument('--model', type=str, help='model architecture', default='resnet18')
 
     parser.add_argument('--method', type=str, help='loss function', choices=['mae', 'mse'], default='mae')
+    parser.add_argument('--kernel', type=str, help='kernel selection for fairkl', default='none')
+    parser.add_argument('--biased_features', type=str, help='path to biased features', default=None)
     
     
     parser.add_argument('--train_all', type=arg2bool, help='train on all dataset including validation (int+ext)', default=False)
@@ -212,7 +214,7 @@ def train(train_loader, model, criterion, optimizer, opts, epoch):
         with torch.cuda.amp.autocast(scaler is not None):
             output, features = model(images)
             output = output.view(-1)
-            running_loss = criterion(output, features, labels.float())
+            running_loss = criterion(output, labels.float())
         
         optimizer.zero_grad()
         if scaler is None:
@@ -254,7 +256,7 @@ def test(test_loader, model, criterion, opts, epoch):
 
         output, features = model(images)
         output = output.view(-1)
-        running_loss = criterion(output, features, labels.float())
+        running_loss = criterion(output, labels.float())
         
         loss.update(running_loss.item(), bsz)
         mae.update(output, labels)
@@ -287,7 +289,8 @@ if __name__ == '__main__':
         model_name = f"{model_name}_warm"
     
 
-    run_name = (f"{model_name}_{opts.method}_"
+    run_name = get_run_name()
+    run_desc = (f"{model_name}_{opts.method}_"
                 f"{opts.optimizer}_"
                 f"tf_{opts.tf}_"
                 f"lr{opts.lr}_{opts.lr_decay}_step{opts.lr_decay_step}_rate{opts.lr_decay_rate}_"
@@ -295,6 +298,7 @@ if __name__ == '__main__':
                 f"trainall_{opts.train_all}_"
                 f"bsz{opts.batch_size}_"
                 f"trial{opts.trial}")
+    
     tb_dir = os.path.join(opts.save_dir, "tensorboard", run_name)
     save_dir = os.path.join(opts.save_dir, f"openbhb_models", run_name)
     ensure_dir(tb_dir)
@@ -304,7 +308,7 @@ if __name__ == '__main__':
     opts.criterion = opts.method
     opts.optimizer_class = optimizer.__class__.__name__
 
-    wandb.init(project="brain-age-prediction", config=opts, name=run_name, sync_tensorboard=True, tags=['to test'])
+    wandb.init(project="brain-age-prediction", config=opts, name=run_name, notes=run_desc, sync_tensorboard=True, tags=['to test'])
     print('Config:', opts)
     print('Model:', model.__class__.__name__)
     print('Criterion:', opts.criterion)

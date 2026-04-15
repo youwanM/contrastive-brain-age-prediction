@@ -6,6 +6,7 @@ import os
 import wandb
 import torch.nn.functional as F
 import models
+import datetime
 from pathlib import Path
 
 
@@ -211,3 +212,24 @@ def compute_site_ba(model, train_loader, test_int, test_ext, opts):
     ba_ext = site_estimator.score(ext_X, ext_y)
 
     return ba_train, ba_int, ba_ext
+
+def get_run_name():
+  # Define phonetic alphabet
+    phonetic_alphabet = [
+        "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
+        "India", "Juliett", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
+        "Quebec", "Romeo", "Sierra", "Tango", "Uniform", "Victor", "Whiskey",
+        "X-ray", "Yankee", "Zulu"
+    ]
+    # Get current date and time
+    now = datetime.datetime.now()
+    # Determine indices based on current hour and day
+    hour_index = now.hour % len(phonetic_alphabet)
+    day_index = now.day % len(phonetic_alphabet)
+    # Construct run name
+    if now.day > 25:
+        additional_code = f"-{phonetic_alphabet[(now.day - 26) % len(phonetic_alphabet)]}"
+        run_name = f"{phonetic_alphabet[hour_index]} {phonetic_alphabet[day_index]} {additional_code}"
+    else:
+        run_name = f"{phonetic_alphabet[hour_index]} {phonetic_alphabet[day_index]}"
+    return run_name

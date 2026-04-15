@@ -15,67 +15,67 @@ def bin_age(age_real: torch.Tensor):
         age_binned[age_real <= value] = value
     return age_binned.long()
 
-def read_data(path, dataset, fast):
-    print(f"Read {dataset.upper()}")
+def read_data(path, dataset):
+    print(f"Read {dataset.upper()} index")
     df = pd.read_csv(os.path.join(path, dataset + ".tsv"), sep="\t")
-    df.loc[df["split"] == "external_test", "site"] = np.nan
-
-    y_arr = df[["age", "site"]].values
-
-    x_arr = np.zeros((10, 3659572))
-    if not fast:
-        x_arr = np.load(os.path.join(path, dataset + ".npy"), mmap_mode="r")
-    
-    print("- y size [original]:", y_arr.shape)
-    print("- x size [original]:", x_arr.shape)
-    return x_arr, y_arr
+    if "site" in df.columns:
+        df.loc[df["split"] == "external_test", "site"] = np.nan
+    return df
 
 class OpenBHB(torch.utils.data.Dataset):
     def __init__(self, root, train=True, internal=True, transform=None, 
                  label="cont", fast=False, load_feats=None):
         self.root = root
-
-        if train and not internal:
-            raise ValueError("Invalid configuration train=True and internal=False")
-        
         self.train = train
         self.internal = internal
-        
-        dataset = "train"
-        if not train:
-            if internal:
-                dataset = "internal_test"
-            else:
-                dataset = "external_test"
-        
-        self.X, self.y = read_data(root, dataset, fast)
-        self.T = transform
         self.label = label
         self.fast = fast
+        self.T = transform
 
+        if train:
+            self.dataset_name = "train"
+        else:
+            self.dataset_name = "internal_test" if internal else "external_test"
+        
+        self.df = read_data(root, self.dataset_name)
+        
         self.bias_feats = None
         if load_feats:
             print("Loading biased features", load_feats)
             self.bias_feats = torch.load(load_feats, map_location="cpu")
         
-        print(f"Read {len(self.X)} records")
+        print(f"Dataset initialized with {len(self.df)} records")
 
     def __len__(self):
-        return len(self.y)
+        return len(self.df)
 
     def __getitem__(self, index):
-        if not self.fast:
-            x = self.X[index]
-        else:
-            x = self.X[0]
+        row = self.df.iloc[index]
+        sub_id = str(row['participant_id'])
+        # Handle cases where sub- prefix might already be in the TSV
+        if not sub_id.startswith("sub-"):
+            sub_id = f"sub-{sub_id}"
+            
+        age = row['age']
+        site = row.get('site', np.nan)
 
-        y = self.y[index]
+        file_name = f"{sub_id}_preproc-cat12vbm_desc-gm_T1w.npy"
+        # We look into 'train/derivatives' as per your NAS structure
+        file_path = os.path.join(self.root, "train", "derivatives", sub_id, "ses-1", file_name)
+        
+        if not self.fast:
+            try:
+                x = np.load(file_path)
+            except FileNotFoundError:
+                print(f"Warning: File not found {file_path}")
+                # Fallback to zeros for the specific modality (VBM size)
+                x = np.zeros(519945) 
+        else:
+            x = np.zeros(519945)
 
         if self.T is not None:
             x = self.T(x)
         
-        # sample, age, site
-        age, site = y[0], y[1]
         if self.label == "bin":
             age = bin_age(torch.tensor(age))
         
@@ -85,118 +85,56 @@ class OpenBHB(torch.utils.data.Dataset):
             return x, age, site
 
 class FeatureExtractor(BaseEstimator, TransformerMixin):
-    """ Select only the requested data associatedd features from the the
-    input buffered data.
-    """
     MODALITIES = OrderedDict([
-        ("vbm", {
-            "shape": (1, 121, 145, 121),
-            "size": 519945}),
-        ("quasiraw", {
-            "shape": (1, 182, 218, 182),
-            "size": 1827095}),
-        ("xhemi", {
-            "shape": (8, 163842),
-            "size": 1310736}),
-        ("vbm_roi", {
-            "shape": (1, 284),
-            "size": 284}),
-        ("desikan_roi", {
-            "shape": (7, 68),
-            "size": 476}),
-        ("destrieux_roi", {
-            "shape": (7, 148),
-            "size": 1036})
+        ("vbm", {"shape": (1, 121, 145, 121), "size": 519945}),
+        ("quasiraw", {"shape": (1, 182, 218, 182), "size": 1827095}),
+        ("xhemi", {"shape": (8, 163842), "size": 1310736}),
+        ("vbm_roi", {"shape": (1, 284), "size": 284}),
+        ("desikan_roi", {"shape": (7, 68), "size": 476}),
+        ("destrieux_roi", {"shape": (7, 148), "size": 1036})
     ])
     MASKS = {
-        "vbm": {
-            "path": None,
-            "thr": 0.05},
-        "quasiraw": {
-            "path": None,
-            "thr": 0}
+        "vbm": {"path": None, "thr": 0.05},
+        "quasiraw": {"path": None, "thr": 0}
     }
 
     def __init__(self, dtype, mock=False):
-        """ Init class.
-        Parameters
-        ----------
-        dtype: str
-            the requested data: 'vbm', 'quasiraw', 'vbm_roi', 'desikan_roi',
-            'destrieux_roi' or 'xhemi'.
-        """
         if dtype not in self.MODALITIES:
             raise ValueError("Invalid input data type.")
         self.dtype = dtype
-
         data_types = list(self.MODALITIES.keys())
         index = data_types.index(dtype)
-        
         cumsum = np.cumsum([item["size"] for item in self.MODALITIES.values()])
-        
-        if index > 0:
-            self.start = cumsum[index - 1]
-        else:
-            self.start = 0
+        self.start = cumsum[index - 1] if index > 0 else 0
         self.stop = cumsum[index]
         
-        self.masks = dict((key, val["path"]) for key, val in self.MASKS.items())
-        self.masks["vbm"] = "./data/masks/cat12vbm_space-MNI152_desc-gm_TPM.nii.gz"
-        self.masks["quasiraw"] = "./data/masks/quasiraw_space-MNI152_desc-brain_T1w.nii.gz"
+        self.masks = {"vbm": "./data/masks/cat12vbm_space-MNI152_desc-gm_TPM.nii.gz",
+                      "quasiraw": "./data/masks/quasiraw_space-MNI152_desc-brain_T1w.nii.gz"}
 
         self.mock = mock
-        if mock:
-            return
+        if not mock:
+            for key in self.masks:
+                if not os.path.isfile(self.masks[key]):
+                    raise ValueError(f"Mask file not found: {self.masks[key]}")
+                arr = nibabel.load(self.masks[key]).get_fdata()
+                thr = self.MASKS[key]["thr"]
+                arr = (arr > thr).astype(np.int16)
+                self.masks[key] = nibabel.Nifti1Image(arr, np.eye(4))
 
-        for key in self.masks:
-            if self.masks[key] is None or not os.path.isfile(self.masks[key]):
-                raise ValueError("Impossible to find mask:", key, self.masks[key])
-            arr = nibabel.load(self.masks[key]).get_fdata()
-            thr = self.MASKS[key]["thr"]
-            arr[arr <= thr] = 0
-            arr[arr > thr] = 1
-            self.masks[key] = nibabel.Nifti1Image(arr.astype(int), np.eye(4))
-
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         return self
 
     def transform(self, X):
-        if self.mock:
-            #print("transforming", X.shape)
-            data = X.reshape(self.MODALITIES[self.dtype]["shape"])
-            #print("mock data:", data.shape)
-            return data
+        # NEW: Check if X is already a volume (3D, 4D, or 5D)
+        if len(X.shape) > 1:
+            target_shape = self.MODALITIES[self.dtype]["shape"]
+            # Reshape ensuring we match the expected (C, D, H, W)
+            return X.reshape(target_shape)
         
-        # print(X.shape)
+        # Original logic for flattened competition vectors
         select_X = X[self.start:self.stop]
         if self.dtype in ("vbm", "quasiraw"):
             im = unmask(select_X, self.masks[self.dtype])
-            select_X = im.get_fdata()
-            select_X = select_X.transpose(2, 0, 1)
-        select_X = select_X.reshape(self.MODALITIES[self.dtype]["shape"])
-        # print('transformed.shape', select_X.shape)
-        return select_X
-
-
-if __name__ == '__main__':
-    import sys
-    from torchvision import transforms
-    from .transforms import Crop, Pad
-
-    selector = FeatureExtractor("vbm")
-
-    T_pre = transforms.Lambda(lambda x: selector.transform(x))
-    T_train = transforms.Compose([
-        T_pre,
-        Crop((1, 121, 128, 121), type="random"),
-        Pad((1, 128, 128, 128)),
-        transforms.Lambda(lambda x: torch.from_numpy(x)),
-        transforms.Normalize(mean=0.0, std=1.0)
-    ])
-
-    train_loader = torch.utils.data.DataLoader(OpenBHB(sys.argv[1], train=True, internal=True, transform=T_train),
-                                               batch_size=3, shuffle=True, num_workers=8,
-                                               persistent_workers=True)
-    
-    x, y1, y2 = next(iter(train_loader))
-    print(x.shape, y1, y2)
+            select_X = im.get_fdata().transpose(2, 0, 1)
+        
+        return select_X.reshape(self.MODALITIES[self.dtype]["shape"])
