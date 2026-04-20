@@ -1,6 +1,6 @@
 program: main_infonce.py
-data_dir: /scratch/data-registry/medical/openbhb
-save_dir:  /scratch/output/brain-age-mri
+data_dir: /home/ymahe/NAS/share/projects/Stroke/data/openBHB
+save_dir:  ./output/brain-age-mri
 model: resnet18
 epochs: 300
 batch_size: 32
@@ -17,4 +17,3 @@ kernel: gaussian
 sigma: 1
 trial: 0
 tf: none
-

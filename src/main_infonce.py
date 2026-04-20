@@ -4,6 +4,7 @@ import os
 from random import gauss
 import numpy as np
 import torch
+import torch.multiprocessing as mp
 import torch.nn.functional as F
 import torch.utils.data
 import torchvision
@@ -17,7 +18,7 @@ import torch.utils.tensorboard
 from torch import nn
 from torchvision import transforms
 from torchvision import datasets
-from util import AverageMeter, NViewTransform, ensure_dir, set_seed, arg2bool, save_model
+from util import AverageMeter, NViewTransform, ensure_dir, set_seed, arg2bool, save_model, get_run_name
 from util import warmup_learning_rate, adjust_learning_rate
 from util import compute_age_mae, compute_site_ba
 from data import FeatureExtractor, OpenBHB, bin_age
@@ -67,6 +68,8 @@ def parse_arguments():
     parser.add_argument('--alpha', type=float, help='infonce weight', default=1.)
     parser.add_argument('--sigma', type=float, help='gaussian-rbf kernel sigma / cauchy gamma', default=1)
     parser.add_argument('--n_views', type=int, help='num. of multiviews', default=2)
+    parser.add_argument('--biased_features', type=str, help='path to biased features', default=None)
+
 
     opts = parser.parse_args()
 
@@ -251,6 +254,7 @@ def train(train_loader, model, infonce, optimizer, opts, epoch):
     return loss.avg, batch_time.avg, data_time.avg
 
 if __name__ == '__main__':
+    mp.set_start_method('fork', force=True)
     opts = parse_arguments()
     
     set_seed(opts.trial)
@@ -278,8 +282,11 @@ if __name__ == '__main__':
         kernel_name = f"{kernel_name}_sigma{opts.sigma}"
     elif opts.kernel == 'cauchy':
         kernel_name = f"{kernel_name}_gamma{opts.sigma}"
+
+    run_name = get_run_name()
+
     
-    run_name = (f"{model_name}_{method_name}_"
+    run_desc = (f"{model_name}_{method_name}_"
                 f"{optimizer_name}_"
                 f"tf{opts.tf}_"
                 f"lr{opts.lr}_{opts.lr_decay}_step{opts.lr_decay_step}_rate{opts.lr_decay_rate}_"
@@ -288,7 +295,6 @@ if __name__ == '__main__':
                 f"bsz{opts.batch_size}_views{opts.n_views}_"
                 f"trainall_{opts.train_all}_"
                 f"kernel_{kernel_name}_"
-                f"f{opts.alpha}_lambd{opts.lambd}_"
                 f"trial{opts.trial}")
     tb_dir = os.path.join(opts.save_dir, "tensorboard", run_name)
     save_dir = os.path.join(opts.save_dir, f"openbhb_models", run_name)
@@ -299,8 +305,7 @@ if __name__ == '__main__':
     opts.criterion = infonce.__class__.__name__
     opts.optimizer_class = optimizer.__class__.__name__
 
-    wandb.init(project="brain-age-prediction", config=opts, name=run_name, sync_tensorboard=True,
-              settings=wandb.Settings(code_dir="/src"), tags=['to test'])
+    wandb.init(project="brain-age-prediction", config=opts, name=run_name, notes=run_desc, sync_tensorboard=True, tags=['to test'])
     wandb.run.log_code(root="/src", include_fn=lambda path: path.endswith(".py"))
 
     print('Config:', opts)

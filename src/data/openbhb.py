@@ -60,8 +60,7 @@ class OpenBHB(torch.utils.data.Dataset):
         site = row.get('site', np.nan)
 
         file_name = f"{sub_id}_preproc-cat12vbm_desc-gm_T1w.npy"
-        # We look into 'train/derivatives' as per your NAS structure
-        file_path = os.path.join(self.root, "train", "derivatives", sub_id, "ses-1", file_name)
+        file_path = os.path.join(self.root, self.dataset_name, "derivatives", sub_id, "ses-1", file_name)
         
         if not self.fast:
             try:
