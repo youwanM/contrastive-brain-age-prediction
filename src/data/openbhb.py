@@ -34,8 +34,10 @@ class OpenBHB(torch.utils.data.Dataset):
 
         if train:
             self.dataset_name = "train"
+            self.data_dir = self.dataset_name
         else:
             self.dataset_name = "internal_test" if internal else "external_test"
+            self.data_dir = "val"
         
         self.df = read_data(root, self.dataset_name)
         
@@ -60,7 +62,7 @@ class OpenBHB(torch.utils.data.Dataset):
         site = row.get('site', np.nan)
 
         file_name = f"{sub_id}_preproc-cat12vbm_desc-gm_T1w.npy"
-        file_path = os.path.join(self.root, self.dataset_name, "derivatives", sub_id, "ses-1", file_name)
+        file_path = os.path.join(self.root, self.data_dir, "derivatives", sub_id, "ses-1", file_name)
         
         if not self.fast:
             try:
