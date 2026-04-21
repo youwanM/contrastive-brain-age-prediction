@@ -203,13 +203,24 @@ def compute_site_ba(model, train_loader, test_int, test_ext, opts):
 
     print("Training site estimator")
     train_X, train_y = gather_site_feats(model, train_loader, opts)
-    ba_train = site_estimator.fit(train_X, train_y)
+    
+    # Filter out NaNs from training labels
+    valid_train = ~np.isnan(train_y)
+    ba_train = site_estimator.fit(train_X[valid_train], train_y[valid_train])
 
     print("Computing BA")
     int_X, int_y = gather_site_feats(model, test_int, opts)
+    valid_int = ~np.isnan(int_y)
+    ba_int = site_estimator.score(int_X[valid_int], int_y[valid_int])
+    
     ext_X, ext_y = gather_site_feats(model, test_ext, opts)
-    ba_int = site_estimator.score(int_X, int_y)
-    ba_ext = site_estimator.score(ext_X, ext_y)
+    valid_ext = ~np.isnan(ext_y)
+    
+    # Gracefully handle the external test set if it has hidden (NaN) labels
+    if valid_ext.sum() > 0:
+        ba_ext = site_estimator.score(ext_X[valid_ext], ext_y[valid_ext])
+    else:
+        ba_ext = np.nan
 
     return ba_train, ba_int, ba_ext
 
