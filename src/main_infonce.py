@@ -137,16 +137,16 @@ def load_data(opts):
         print("Total dataset length:", len(train_dataset))
 
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=opts.batch_size, shuffle=True, num_workers=18,
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=opts.batch_size, shuffle=True, num_workers=8,
                                                persistent_workers=True)
     train_loader_score = torch.utils.data.DataLoader(OpenBHB(opts.data_dir, train=True, internal=True, transform=T_train, label=opts.label),
-                                                     batch_size=opts.batch_size, shuffle=True, num_workers=18,
+                                                     batch_size=opts.batch_size, shuffle=True, num_workers=8,
                                                      persistent_workers=True)
     test_internal = torch.utils.data.DataLoader(OpenBHB(opts.data_dir, train=False, internal=True, transform=T_test), 
-                                                batch_size=opts.batch_size, shuffle=False, num_workers=18,
+                                                batch_size=opts.batch_size, shuffle=False, num_workers=8,
                                                 persistent_workers=True)
     test_external = torch.utils.data.DataLoader(OpenBHB(opts.data_dir, train=False, internal=False, transform=T_test), 
-                                                batch_size=opts.batch_size, shuffle=False, num_workers=18,
+                                                batch_size=opts.batch_size, shuffle=False, num_workers=8,
                                                 persistent_workers=True)
     return train_loader, train_loader_score, test_internal, test_external
 
