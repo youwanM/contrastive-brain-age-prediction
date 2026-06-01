@@ -3,7 +3,7 @@ import os
 import shutil
 
 # Set your path
-data_root = "/home/ymahe/NAS/share/projects/Stroke/data/openBHB"
+data_root = "../../openBHB"
 participants_path = os.path.join(data_root, "participants.tsv")
 
 # Load the main index

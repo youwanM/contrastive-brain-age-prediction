@@ -1,9 +1,9 @@
 program: main_mse.py
-data_dir: /home/ymahe/NAS/share/projects/Stroke/data/openBHB
+data_dir: ../../openBHB
 save_dir:  ./output/brain-age-mri
 model: resnet18
 epochs: 300
-batch_size: 32
+batch_size: 128
 lr: 1e-4
 lr_decay: step
 lr_decay_rate: 0.9

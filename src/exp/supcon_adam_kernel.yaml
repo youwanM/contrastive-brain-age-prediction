@@ -1,9 +1,9 @@
 program: main_infonce.py
-data_dir: /home/ymahe/NAS/share/projects/Stroke/data/openBHB
+data_dir: ../../openBHB
 save_dir:  ./output/brain-age-mri
 model: resnet18
 epochs: 300
-batch_size: 32
+batch_size: 72
 lr: 1e-4
 lr_decay: step
 lr_decay_rate: 0.9
@@ -11,9 +11,9 @@ lr_decay_step: 10
 optimizer: adam
 momentum: 0.9
 weight_decay: 5e-5
-train_all: 1
+train_all: 0
 method: yaware
 kernel: gaussian
-sigma: 1
+sigma: 2
 trial: 0
 tf: none
